@@ -1,0 +1,22 @@
+function(brompris_test name)
+    cmake_parse_arguments(T "" "TIMEOUT" "LIBS" ${ARGN})
+    add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE brompris::brompris ${T_LIBS})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src)
+    brompris_warnings(${name})
+    if(NOT T_TIMEOUT)
+        set(T_TIMEOUT 60)
+    endif()
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES TIMEOUT ${T_TIMEOUT} SKIP_RETURN_CODE 77)
+endfunction()
+
+# Unit tests
+brompris_test(test_metadata)
+brompris_test(test_player_model)
+
+# D-Bus MPRIS2 integration tests (Linux)
+if(BROMPRIS_LINUX)
+    brompris_test(test_mpris_client LIBS brodbus::brodbus)
+    brompris_test(test_media_manager LIBS brodbus::brodbus)
+endif()
