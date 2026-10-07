@@ -125,14 +125,18 @@ private:
     std::vector<MediaPlayer*> observed_players_;
 };
 
+// Statics are destroyed in reverse order of declaration. A manager's
+// destructor closes its players, which notifies the observer and queues
+// events, so the event queue and the observer are declared first: they must
+// outlive the managers.
+std::mutex g_events_mu;
+std::vector<MprisEventVariant> g_pending_events;
+ApiObserver g_observer;
+
 std::mutex g_services_mu;
 std::shared_ptr<MediaManager> g_custom_manager;
 std::shared_ptr<MediaManager> g_default_manager;
 bool g_observer_attached = false;
-ApiObserver g_observer;
-
-std::mutex g_events_mu;
-std::vector<MprisEventVariant> g_pending_events;
 
 } // namespace
 
