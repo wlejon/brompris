@@ -47,7 +47,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 
-    bro_dependency(brodbus GITHUB wlejon/brodbus REF 714ded627aed1c0db4b046d143bcc29e1ec9e9cf TARGET brodbus::brodbus
+    bro_dependency(brodbus GITHUB wlejon/brodbus TARGET brodbus::brodbus
                    OPTIONS BRODBUS_BUILD_TESTS=OFF)
 
     list(APPEND BROMPRIS_SOURCES
@@ -82,7 +82,7 @@ option(BROMPRIS_ENABLE_API "Build Bronze JavaScript API" ${PROJECT_IS_TOP_LEVEL}
 if(BROMPRIS_ENABLE_API)
     # bronze, the JavaScript runtime the api binds (it brings its code
     # generator, brass).
-    bro_dependency(bronze GITHUB wlejon/bronze REF 15ce4cf5fc25d8afe03882985ae95adcba46a6a9 TARGET bronze_runtime_shared
+    bro_dependency(bronze GITHUB wlejon/bronze TARGET bronze_runtime_shared
                    OPTIONS BRONZE_BUILD_SHARED_RUNTIME=ON BRONZE_BUILD_TESTS=OFF)
 
     add_subdirectory(src/api)
