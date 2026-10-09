@@ -13,7 +13,7 @@ concurrency:
 # brompris speaks MPRIS2 over D-Bus on Linux through brodbus; Windows and
 # macOS build with no backend yet. The tests talk to players they host
 # themselves on a private bus. The binding (brompris_api) binds bronze. brodbus
-# and bronze (with brass) come from the commits CMakeLists.txt pins
+# and bronze (with brass) come from the heads of their main branches
 # (cmake/bro_deps.cmake), fetched at configure.
 jobs:
   test:
