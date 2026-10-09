@@ -10,11 +10,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# brompris speaks MPRIS2 over D-Bus on Linux through brodbus, checked out
-# beside the repo as a sibling; Windows and macOS build with no backend yet.
-# The tests talk to players they host themselves on a private bus. The binding
-# (brompris_api) binds bronze, so every job lays out ../bronze and ../brass
-# with bronze's checkout-toolchain action.
+# brompris speaks MPRIS2 over D-Bus on Linux through brodbus; Windows and
+# macOS build with no backend yet. The tests talk to players they host
+# themselves on a private bus. The binding (brompris_api) binds bronze. brodbus
+# and bronze (with brass) come from the commits CMakeLists.txt pins
+# (cmake/bro_deps.cmake), fetched at configure.
 jobs:
   test:
     name: ${{ matrix.name }}
@@ -32,13 +32,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: brompris
-
-      - uses: actions/checkout@v7
-        with:
-          repository: wlejon/brodbus
-          path: brodbus
-
-      - uses: wlejon/bronze/.github/actions/checkout-toolchain@main
 
       - name: Install packages (Linux)
         if: runner.os == 'Linux'

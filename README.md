@@ -80,7 +80,10 @@ src/
 
 - **CMake 3.24+** and a **C++20** compiler (GCC 12+, Clang 15+, MSVC 2022+).
 - **Linux**: `libsystemd` (sd-bus >= 246) and `dbus-daemon` (for running tests).
-- **Dependencies**: `brodbus` checked out beside this repository at `../brodbus`.
+- **Dependencies**: `brodbus` (Linux) and [bronze](https://github.com/wlejon/bronze) for the
+  JavaScript binding. A plain `git clone` is enough: each is a `bro_dependency()` pin in
+  `CMakeLists.txt` (`cmake/bro_deps.cmake`), taken from a working tree at `../<name>` when there
+  is one and otherwise fetched at configure (override with `-DFETCHCONTENT_SOURCE_DIR_<NAME>=<path>`).
 
 ### Standalone Build
 
