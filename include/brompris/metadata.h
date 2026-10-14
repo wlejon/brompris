@@ -50,6 +50,7 @@ struct MediaMetadata {
     std::vector<std::string> artists; // All artists
     std::string album;
     std::string album_artist;
+    std::vector<std::string> album_artists;
     std::string album_art_url;
     int64_t duration_usec = 0;        // Microseconds (MPRIS mpris:length)
     std::string track_id;             // Track ID (object path or string)
@@ -62,7 +63,7 @@ struct MediaMetadata {
     std::map<std::string, std::string> extra;
 
     bool empty() const noexcept {
-        return title.empty() && artist.empty() && album.empty() &&
+        return title.empty() && artist.empty() && artists.empty() && album.empty() &&
                track_id.empty() && duration_usec == 0;
     }
 
@@ -76,6 +77,8 @@ struct MediaMetadata {
 
     bool operator==(const MediaMetadata& o) const = default;
 };
+
+using TrackMetadata = MediaMetadata;
 
 #if defined(BROMPRIS_HAS_BRODBUS)
 MediaMetadata parse_mpris_metadata(const std::map<std::string, brodbus::PropertyValue>& dict);

@@ -4,6 +4,7 @@
 #include "brompris/metadata.h"
 #include "brompris/observer.h"
 #include "brompris/player_model.h"
+#include "brompris/player_service.h"
 
 #include <memory>
 #include <mutex>

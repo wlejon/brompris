@@ -39,7 +39,8 @@ set(BROMPRIS_SOURCES
     src/metadata.cpp
     src/player_model.cpp
     src/media_player.cpp
-    src/media_manager.cpp)
+    src/media_manager.cpp
+    src/player_service.cpp)
 
 set(BROMPRIS_LINUX OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -52,6 +53,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     list(APPEND BROMPRIS_SOURCES
         src/linux/mpris_client.cpp
+        src/linux/mpris_service.cpp
         src/win/smtc.cpp)
 elseif(WIN32)
     list(APPEND BROMPRIS_SOURCES src/win/smtc.cpp)

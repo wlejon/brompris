@@ -116,6 +116,41 @@ public:
         queueMprisEvent(std::move(ev));
     }
 
+    void on_volume_changed(MediaPlayer& player, double volume) override {
+        VolumeChangedEvent ev;
+        ev.player_id = player.id();
+        ev.volume = volume;
+        queueMprisEvent(std::move(ev));
+    }
+
+    void on_rate_changed(MediaPlayer& player, double rate) override {
+        RateChangedEvent ev;
+        ev.player_id = player.id();
+        ev.rate = rate;
+        queueMprisEvent(std::move(ev));
+    }
+
+    void on_loop_status_changed(MediaPlayer& player, LoopStatus loop) override {
+        LoopStatusChangedEvent ev;
+        ev.player_id = player.id();
+        ev.loop_status = loop;
+        queueMprisEvent(std::move(ev));
+    }
+
+    void on_shuffle_status_changed(MediaPlayer& player, ShuffleStatus shuffle) override {
+        ShuffleStatusChangedEvent ev;
+        ev.player_id = player.id();
+        ev.shuffle_status = shuffle;
+        queueMprisEvent(std::move(ev));
+    }
+
+    void on_capabilities_changed(MediaPlayer& player, const PlayerCapabilities& caps) override {
+        CapabilitiesChangedEvent ev;
+        ev.player_id = player.id();
+        ev.capabilities = caps;
+        queueMprisEvent(std::move(ev));
+    }
+
     void on_player_closed(MediaPlayer& player) override {
         detach_player(&player);
     }
@@ -136,6 +171,8 @@ ApiObserver g_observer;
 std::mutex g_services_mu;
 std::shared_ptr<MediaManager> g_custom_manager;
 std::shared_ptr<MediaManager> g_default_manager;
+PlayerServiceFactory g_service_factory;
+std::string g_dbus_address;
 bool g_observer_attached = false;
 
 } // namespace
@@ -150,7 +187,14 @@ std::shared_ptr<MediaManager> activeManager() {
         return g_custom_manager;
     }
     if (!g_default_manager) {
-        g_default_manager = MediaManager::create();
+#if defined(BROMPRIS_HAS_BRODBUS)
+        if (!g_dbus_address.empty()) {
+            g_default_manager = MediaManager::create_with_address(g_dbus_address);
+        }
+#endif
+        if (!g_default_manager) {
+            g_default_manager = MediaManager::create();
+        }
         if (g_default_manager) {
             g_observer.attach_to_manager(g_default_manager.get());
             g_observer_attached = true;
@@ -177,6 +221,50 @@ void setMediaManager(std::shared_ptr<MediaManager> mgr) {
 
 std::shared_ptr<MediaManager> getMediaManager() {
     return activeManager();
+}
+
+void setPlayerServiceFactory(PlayerServiceFactory factory) {
+    std::lock_guard lock(g_services_mu);
+    g_service_factory = std::move(factory);
+}
+
+void setDbusAddress(const std::string& address) {
+    std::lock_guard lock(g_services_mu);
+    if (g_dbus_address == address) return;
+    g_dbus_address = address;
+    if (!g_custom_manager && g_default_manager) {
+        if (g_observer_attached) {
+            g_observer.detach_from_manager(g_default_manager.get());
+            g_observer_attached = false;
+        }
+        g_default_manager.reset();
+    }
+}
+
+std::string getDbusAddress() {
+    std::lock_guard lock(g_services_mu);
+    return g_dbus_address;
+}
+
+std::unique_ptr<PlayerService> createApiPlayerService(
+    const PlayerServiceConfig& cfg, PlayerServiceCallbacks cbs) {
+    PlayerServiceFactory factory;
+    std::string address;
+    {
+        std::lock_guard lock(g_services_mu);
+        factory = g_service_factory;
+        address = g_dbus_address;
+    }
+    if (factory) {
+        return factory(cfg, std::move(cbs));
+    }
+#if defined(BROMPRIS_HAS_BRODBUS)
+    if (!address.empty()) {
+        auto svc = PlayerService::create_with_address(address, cfg, cbs);
+        if (svc) return svc;
+    }
+#endif
+    return PlayerService::create(cfg, std::move(cbs));
 }
 
 void queueMprisEvent(MprisEventVariant evItem) {
@@ -222,6 +310,7 @@ Value ensureBroMpris() {
 void installMpris() {
     ev::Persistent mprisObj(ensureBroMpris());
     installNativeMpris(mprisObj.get());
+    installNativeMprisService(mprisObj.get());
     // Eagerly resolve manager so observers attach early if manager exists
     activeManager();
 }
@@ -327,6 +416,46 @@ void drainMprisEvents() {
                 b.set("position", static_cast<double>(event.position_usec));
                 b.set("positionUsec", static_cast<double>(event.position_usec));
                 dispatchMprisEvent("seeked", b.build());
+            } else if constexpr (std::is_same_v<T, VolumeChangedEvent>) {
+                ObjectBuilder b;
+                b.set("type", "volume");
+                b.set("id", event.player_id);
+                b.set("playerId", event.player_id);
+                b.set("volume", event.volume);
+                dispatchMprisEvent("volume", b.build());
+            } else if constexpr (std::is_same_v<T, RateChangedEvent>) {
+                ObjectBuilder b;
+                b.set("type", "rate");
+                b.set("id", event.player_id);
+                b.set("playerId", event.player_id);
+                b.set("rate", event.rate);
+                dispatchMprisEvent("rate", b.build());
+            } else if constexpr (std::is_same_v<T, LoopStatusChangedEvent>) {
+                ObjectBuilder b;
+                b.set("type", "loopStatus");
+                b.set("id", event.player_id);
+                b.set("playerId", event.player_id);
+                std::string ls = std::string(to_string(event.loop_status));
+                b.set("loopStatus", ls);
+                b.set("status", ls);
+                dispatchMprisEvent("loopStatus", b.build());
+            } else if constexpr (std::is_same_v<T, ShuffleStatusChangedEvent>) {
+                ObjectBuilder b;
+                b.set("type", "shuffle");
+                b.set("id", event.player_id);
+                b.set("playerId", event.player_id);
+                b.set("shuffle", shuffle_status_to_bool(event.shuffle_status));
+                b.set("shuffleStatus", std::string(to_string(event.shuffle_status)));
+                dispatchMprisEvent("shuffle", b.build());
+            } else if constexpr (std::is_same_v<T, CapabilitiesChangedEvent>) {
+                ObjectBuilder b;
+                b.set("type", "capabilities");
+                b.set("id", event.player_id);
+                b.set("playerId", event.player_id);
+                b.set("capabilities", buildCapabilitiesObject(event.capabilities));
+                dispatchMprisEvent("capabilities", b.build());
+            } else if constexpr (std::is_same_v<T, ServiceCommandEvent>) {
+                dispatchServiceCommand(event);
             }
         }, evVariant);
     }
@@ -335,6 +464,7 @@ void drainMprisEvents() {
 }
 
 void tickMprisAsync() {
+    tickServices();
     auto mgr = activeManager();
     if (mgr) {
         mgr->process();
@@ -343,6 +473,7 @@ void tickMprisAsync() {
 }
 
 void shutdownMprisAsync() {
+    shutdownServices();
     {
         std::lock_guard lock(g_services_mu);
         if (g_observer_attached) {

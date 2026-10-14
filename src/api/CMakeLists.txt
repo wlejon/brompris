@@ -1,6 +1,7 @@
 add_library(brompris_api STATIC
     api.cpp
     native_mpris.cpp
+    native_service.cpp
 )
 
 target_include_directories(brompris_api PUBLIC

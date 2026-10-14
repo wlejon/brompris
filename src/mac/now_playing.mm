@@ -63,10 +63,20 @@ std::unique_ptr<MediaManager> create_mac_media_manager() {
     return std::make_unique<MacMediaManager>();
 }
 
+std::unique_ptr<PlayerService> create_mac_player_service(
+    const PlayerServiceConfig& config, PlayerServiceCallbacks callbacks) {
+    return std::make_unique<PlayerService>(config, std::move(callbacks));
+}
+
 #else
 
 std::unique_ptr<MediaManager> create_mac_media_manager() {
     return nullptr;
+}
+
+std::unique_ptr<PlayerService> create_mac_player_service(
+    const PlayerServiceConfig& config, PlayerServiceCallbacks callbacks) {
+    return std::make_unique<PlayerService>(config, std::move(callbacks));
 }
 
 #endif  // __APPLE__

@@ -4,6 +4,7 @@
 #include "brompris/metadata.h"
 #include "brompris/mpris.h"
 #include "brompris/observer.h"
+#include "brompris/player_service.h"
 
 #include <cstdint>
 #include <memory>
@@ -56,22 +57,74 @@ struct SeekedEvent {
     int64_t position_usec = 0;
 };
 
+struct VolumeChangedEvent {
+    std::string player_id;
+    double volume = 1.0;
+};
+
+struct RateChangedEvent {
+    std::string player_id;
+    double rate = 1.0;
+};
+
+struct LoopStatusChangedEvent {
+    std::string player_id;
+    LoopStatus loop_status = LoopStatus::None;
+};
+
+struct ShuffleStatusChangedEvent {
+    std::string player_id;
+    ShuffleStatus shuffle_status = ShuffleStatus::Off;
+};
+
+struct CapabilitiesChangedEvent {
+    std::string player_id;
+    PlayerCapabilities capabilities;
+};
+
+struct ServiceCommandEvent {
+    uint64_t service_id = 0;
+    std::string command;
+    int64_t offset_usec = 0;
+    int64_t position_usec = 0;
+    std::string track_id;
+    std::string uri;
+    double volume = 1.0;
+    double rate = 1.0;
+    LoopStatus loop_status = LoopStatus::None;
+    bool shuffle = false;
+    bool fullscreen = false;
+};
+
 using MprisEventVariant = std::variant<
     PlayerAddedEvent,
     PlayerRemovedEvent,
     ActivePlayerChangedEvent,
     PlaybackStatusEvent,
     MetadataEvent,
-    SeekedEvent
+    SeekedEvent,
+    VolumeChangedEvent,
+    RateChangedEvent,
+    LoopStatusChangedEvent,
+    ShuffleStatusChangedEvent,
+    CapabilitiesChangedEvent,
+    ServiceCommandEvent
 >;
 
 Value ensureBroMpris();
 void installNativeMpris(Value mprisObj);
+void installNativeMprisService(Value mprisObj);
 
 void queueMprisEvent(MprisEventVariant evItem);
 void drainMprisEvents();
 void clearSubscriptions();
 void clearPendingEvents();
+
+void dispatchServiceCommand(const ServiceCommandEvent& cmd);
+void tickServices();
+void shutdownServices();
+std::unique_ptr<PlayerService> createApiPlayerService(
+    const PlayerServiceConfig& cfg, PlayerServiceCallbacks cbs);
 
 void addMprisEventListener(const std::string& event, Value callback);
 void removeMprisEventListener(const std::string& event, Value callback);
@@ -85,6 +138,9 @@ Value buildPlayerObjectFromSnapshot(const std::string& id,
                                    double volume,
                                    int64_t position_usec);
 Value buildMetadataObject(const MediaMetadata& meta);
+Value buildCapabilitiesObject(const PlayerCapabilities& caps);
+MediaMetadata parseMetadataObject(Value obj);
+PlayerCapabilities parseCapabilitiesObject(Value obj, const PlayerCapabilities& defaults = {});
 
 std::shared_ptr<brompris::MediaManager> activeManager();
 

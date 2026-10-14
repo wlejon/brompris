@@ -75,6 +75,30 @@ bool shuffle_status_to_bool(ShuffleStatus status) noexcept {
 
 #if defined(BROMPRIS_HAS_BRODBUS)
 
+namespace {
+
+bool is_valid_dbus_object_path(std::string_view s) noexcept {
+    if (s.empty() || s.front() != '/') return false;
+    if (s.size() == 1) return true;
+    if (s.back() == '/') return false;
+    bool prev_slash = true;
+    for (size_t i = 1; i < s.size(); ++i) {
+        char c = s[i];
+        if (c == '/') {
+            if (prev_slash) return false;
+            prev_slash = true;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                   (c >= '0' && c <= '9') || c == '_') {
+            prev_slash = false;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 MediaMetadata parse_mpris_metadata(const std::map<std::string, brodbus::PropertyValue>& dict) {
     MediaMetadata meta;
 
@@ -89,18 +113,23 @@ MediaMetadata parse_mpris_metadata(const std::map<std::string, brodbus::Property
                 }
             } else if (val.is<std::string>()) {
                 meta.artist = val.as_string();
-                meta.artists = {meta.artist};
+                if (!meta.artist.empty()) {
+                    meta.artists = {meta.artist};
+                }
             }
         } else if (key == "xesam:album") {
             meta.album = val.as_string();
         } else if (key == "xesam:albumArtist") {
             if (val.is<std::vector<std::string>>()) {
-                auto list = val.as_string_list();
-                if (!list.empty()) {
-                    meta.album_artist = list.front();
+                meta.album_artists = val.as_string_list();
+                if (!meta.album_artists.empty()) {
+                    meta.album_artist = meta.album_artists.front();
                 }
             } else if (val.is<std::string>()) {
                 meta.album_artist = val.as_string();
+                if (!meta.album_artist.empty()) {
+                    meta.album_artists = {meta.album_artist};
+                }
             }
         } else if (key == "mpris:artUrl") {
             meta.album_art_url = val.as_string();
@@ -156,7 +185,9 @@ std::map<std::string, brodbus::PropertyValue> to_mpris_properties(const MediaMet
     if (!meta.album.empty()) {
         dict["xesam:album"] = brodbus::PropertyValue(meta.album);
     }
-    if (!meta.album_artist.empty()) {
+    if (!meta.album_artists.empty()) {
+        dict["xesam:albumArtist"] = brodbus::PropertyValue(meta.album_artists);
+    } else if (!meta.album_artist.empty()) {
         dict["xesam:albumArtist"] = brodbus::PropertyValue(std::vector<std::string>{meta.album_artist});
     }
     if (!meta.album_art_url.empty()) {
@@ -166,7 +197,7 @@ std::map<std::string, brodbus::PropertyValue> to_mpris_properties(const MediaMet
         dict["mpris:length"] = brodbus::PropertyValue(meta.duration_usec);
     }
     if (!meta.track_id.empty()) {
-        if (meta.track_id.front() == '/') {
+        if (is_valid_dbus_object_path(meta.track_id)) {
             dict["mpris:trackid"] = brodbus::PropertyValue(brodbus::ObjectPath(meta.track_id));
         } else {
             dict["mpris:trackid"] = brodbus::PropertyValue(meta.track_id);

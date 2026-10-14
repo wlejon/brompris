@@ -4,6 +4,10 @@
 #include "eval/eval.h"
 #include "brompris/brompris.h"
 
+#if defined(BROMPRIS_HAS_BRODBUS)
+#include "brodbus/private_bus.h"
+#endif
+
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -12,6 +16,7 @@
 #include <vector>
 
 using namespace brompris;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -130,7 +135,9 @@ int main() {
     const char* methods[] = {
         "getPlayers", "getActivePlayer", "findPlayer", "getMetadata",
         "play", "pause", "playPause", "stop", "next", "previous",
-        "seek", "setPosition", "setVolume",
+        "seek", "setPosition", "setVolume", "setLoopStatus", "setShuffle", "setRate",
+        "openUri", "raise", "quit",
+        "createService", "publish",
         "on", "off", "addEventListener", "removeEventListener"
     };
     for (const char* m : methods) {
@@ -400,7 +407,184 @@ int main() {
         std::cout << "  off() unregisters listener [PASS]" << std::endl;
     }
 
-    // 7. Test shutdownMprisAsync()
+    // 7. Test bro.mpris.createService / bro.mpris.publish handle & state updates
+    {
+        auto rSvc = evalScript(
+            "(function() {\n"
+            "  const svc = bro.mpris.createService({\n"
+            "    name: 'helm_music_unit',\n"
+            "    identity: 'Music',\n"
+            "    desktopEntry: 'helm.music',\n"
+            "    volume: 0.75,\n"
+            "    playbackStatus: 'Paused',\n"
+            "    metadata: {\n"
+            "      title: 'Money',\n"
+            "      artists: ['Pink Floyd'],\n"
+            "      album: 'The Dark Side of the Moon',\n"
+            "      artUrl: 'file:///music/cover.jpg',\n"
+            "      lengthUs: 382000000,\n"
+            "      trackId: '/org/mpris/MediaPlayer2/Track/6',\n"
+            "      trackNumber: 6\n"
+            "    }\n"
+            "  });\n"
+            "  if (!svc) return 'svc null';\n"
+            "  if (svc.id !== 'org.mpris.MediaPlayer2.helm_music_unit') return 'id: ' + svc.id;\n"
+            "  if (svc.identity !== 'Music') return 'identity: ' + svc.identity;\n"
+            "  if (svc.desktopEntry !== 'helm.music') return 'de: ' + svc.desktopEntry;\n"
+            "  if (svc.getPlaybackStatus() !== 'Paused') return 'status: ' + svc.getPlaybackStatus();\n"
+            "  if (Math.abs(svc.getVolume() - 0.75) > 0.001) return 'vol: ' + svc.getVolume();\n"
+            "  const m1 = svc.getMetadata();\n"
+            "  if (!m1 || m1.title !== 'Money' || m1.artist !== 'Pink Floyd') return 'm1';\n"
+            "\n"
+            "  svc.setPlaybackStatus('Playing');\n"
+            "  if (svc.getPlaybackStatus() !== 'Playing') return 'setPlaybackStatus';\n"
+            "  svc.setPosition(15000000);\n"
+            "  if (svc.getPosition() < 15000000) return 'setPosition';\n"
+            "  svc.setVolume(0.5);\n"
+            "  if (Math.abs(svc.getVolume() - 0.5) > 0.001) return 'setVolume';\n"
+            "  svc.setRate(1.25);\n"
+            "  if (Math.abs(svc.getRate() - 1.25) > 0.001) return 'setRate';\n"
+            "  svc.setLoopStatus('Track');\n"
+            "  if (svc.getLoopStatus() !== 'Track') return 'setLoopStatus';\n"
+            "  svc.setShuffle(true);\n"
+            "  if (svc.getShuffle() !== true) return 'setShuffle';\n"
+            "  svc.setCapabilities({ canGoNext: false, canRaise: true });\n"
+            "  const caps = svc.getCapabilities();\n"
+            "  if (caps.canGoNext !== false || caps.canRaise !== true || caps.canPlay !== true) return 'caps';\n"
+            "  svc.seeked(22000000);\n"
+            "  svc.close();\n"
+            "  if (svc.isRunning() !== false) return 'isRunning after close';\n"
+            "  return true;\n"
+            "})()\n"
+        );
+        REQUIRE(!rSvc.thrown);
+        if (ev::isString(rSvc.value)) {
+            std::cerr << "Section 7 service unit check failed: " << ev::toUtf8(rSvc.value) << std::endl;
+        }
+        REQUIRE(ev::isBool(rSvc.value) && ev::toBool(rSvc.value));
+        std::cout << "  bro.mpris.createService() state & getters/setters [PASS]" << std::endl;
+    }
+
+#if defined(BROMPRIS_HAS_BRODBUS) && defined(__linux__)
+    // 8. Test JS Service <-> Controller round-trip over private D-Bus
+    {
+        brodbus::PrivateBus daemon;
+        if (daemon.is_valid()) {
+            brompris::api::setDbusAddress(daemon.address());
+            std::shared_ptr<MediaManager> dbusMgr = MediaManager::create_with_address(daemon.address());
+            REQUIRE(dbusMgr);
+            brompris::api::setMediaManager(dbusMgr);
+
+            auto rPublish = evalScript(
+                "(function() {\n"
+                "  globalThis._svcCommands = [];\n"
+                "  globalThis._svcPlayed = 0;\n"
+                "  globalThis._svcPaused = 0;\n"
+                "  globalThis._svcNext = 0;\n"
+                "  globalThis._svcPrev = 0;\n"
+                "  globalThis._svcSeekOffset = 0;\n"
+                "  globalThis._svcPos = 0;\n"
+                "  globalThis._svcPosTrack = '';\n"
+                "  globalThis._svcVol = 0;\n"
+                "  globalThis._svcLoop = '';\n"
+                "  globalThis._svcShuf = false;\n"
+                "\n"
+                "  globalThis._svc = bro.mpris.publish({\n"
+                "    name: 'helm_music',\n"
+                "    identity: 'Music',\n"
+                "    desktopEntry: 'helm.music',\n"
+                "    playbackStatus: 'Paused',\n"
+                "    volume: 0.8,\n"
+                "    metadata: {\n"
+                "      title: 'Us and Them',\n"
+                "      artist: 'Pink Floyd',\n"
+                "      album: 'The Dark Side of the Moon',\n"
+                "      duration: 469000000,\n"
+                "      trackId: '/org/mpris/MediaPlayer2/Track/7'\n"
+                "    },\n"
+                "    onPlay: () => { globalThis._svcPlayed++; },\n"
+                "    onPause: () => { globalThis._svcPaused++; },\n"
+                "    onNext: () => { globalThis._svcNext++; },\n"
+                "    onPrevious: () => { globalThis._svcPrev++; },\n"
+                "    onSeek: (e) => { globalThis._svcSeekOffset = e.offset; },\n"
+                "    onSetPosition: (e) => { globalThis._svcPos = e.position; globalThis._svcPosTrack = e.trackId; },\n"
+                "    onSetVolume: (e) => { globalThis._svcVol = e.volume; },\n"
+                "    onSetLoopStatus: (e) => { globalThis._svcLoop = e.loopStatus; },\n"
+                "    onSetShuffle: (e) => { globalThis._svcShuf = e.shuffle; }\n"
+                "  });\n"
+                "  globalThis._svc.onCommand((cmd) => globalThis._svcCommands.push(cmd.command));\n"
+                "  return globalThis._svc && globalThis._svc.isConnected();\n"
+                "})()\n"
+            );
+            REQUIRE(!rPublish.thrown && ev::toBool(rPublish.value));
+
+            bool discovered = bstest::wait_until([&] {
+                dbusMgr->wait(20000);
+                brompris::api::tickMprisAsync();
+                return dbusMgr->find_player("org.mpris.MediaPlayer2.helm_music") != nullptr;
+            }, 2000ms);
+            REQUIRE(discovered);
+
+            // Verify controller JS sees the published service and can control it
+            auto rControl = evalScript(
+                "(function() {\n"
+                "  const p = bro.mpris.findPlayer('org.mpris.MediaPlayer2.helm_music');\n"
+                "  if (!p) return 'player not found';\n"
+                "  if (p.identity !== 'Music') return 'identity: ' + p.identity;\n"
+                "  const meta = bro.mpris.getMetadata('org.mpris.MediaPlayer2.helm_music');\n"
+                "  if (!meta || meta.title !== 'Us and Them') return 'meta title';\n"
+                "\n"
+                "  if (!bro.mpris.play('org.mpris.MediaPlayer2.helm_music')) return 'play failed';\n"
+                "  if (!bro.mpris.pause('org.mpris.MediaPlayer2.helm_music')) return 'pause failed';\n"
+                "  if (!bro.mpris.next('org.mpris.MediaPlayer2.helm_music')) return 'next failed';\n"
+                "  if (!bro.mpris.previous('org.mpris.MediaPlayer2.helm_music')) return 'prev failed';\n"
+                "  if (!bro.mpris.seek('org.mpris.MediaPlayer2.helm_music', 7000000)) return 'seek failed';\n"
+                "  if (!bro.mpris.setPosition('org.mpris.MediaPlayer2.helm_music', '/org/mpris/MediaPlayer2/Track/7', 33000000)) return 'setPos failed';\n"
+                "  if (!bro.mpris.setVolume('org.mpris.MediaPlayer2.helm_music', 0.45)) return 'setVol failed';\n"
+                "  if (!bro.mpris.setLoopStatus('org.mpris.MediaPlayer2.helm_music', 'Playlist')) return 'setLoop failed';\n"
+                "  if (!bro.mpris.setShuffle('org.mpris.MediaPlayer2.helm_music', true)) return 'setShuffle failed';\n"
+                "  return true;\n"
+                "})()\n"
+            );
+            REQUIRE(!rControl.thrown);
+            if (ev::isString(rControl.value)) {
+                std::cerr << "Section 8 control check failed: " << ev::toUtf8(rControl.value) << std::endl;
+            }
+            REQUIRE(ev::isBool(rControl.value) && ev::toBool(rControl.value));
+
+            // Tick to dispatch queued service commands to JS callbacks
+            brompris::api::tickMprisAsync();
+
+            auto rVerifyCmds = evalScript(
+                "(function() {\n"
+                "  if (globalThis._svcPlayed !== 1) return 'played: ' + globalThis._svcPlayed;\n"
+                "  if (globalThis._svcPaused !== 1) return 'paused: ' + globalThis._svcPaused;\n"
+                "  if (globalThis._svcNext !== 1) return 'next: ' + globalThis._svcNext;\n"
+                "  if (globalThis._svcPrev !== 1) return 'prev: ' + globalThis._svcPrev;\n"
+                "  if (globalThis._svcSeekOffset !== 7000000) return 'seek: ' + globalThis._svcSeekOffset;\n"
+                "  if (globalThis._svcPos !== 33000000) return 'pos: ' + globalThis._svcPos;\n"
+                "  if (globalThis._svcPosTrack !== '/org/mpris/MediaPlayer2/Track/7') return 'track: ' + globalThis._svcPosTrack;\n"
+                "  if (Math.abs(globalThis._svcVol - 0.45) > 0.001) return 'vol: ' + globalThis._svcVol;\n"
+                "  if (globalThis._svcLoop !== 'Playlist') return 'loop: ' + globalThis._svcLoop;\n"
+                "  if (globalThis._svcShuf !== true) return 'shuf: ' + globalThis._svcShuf;\n"
+                "  if (globalThis._svcCommands.length !== 9) return 'cmd len: ' + globalThis._svcCommands.length;\n"
+                "  globalThis._svc.close();\n"
+                "  return true;\n"
+                "})()\n"
+            );
+            REQUIRE(!rVerifyCmds.thrown);
+            if (ev::isString(rVerifyCmds.value)) {
+                std::cerr << "Section 8 verify commands failed: " << ev::toUtf8(rVerifyCmds.value) << std::endl;
+            }
+            REQUIRE(ev::isBool(rVerifyCmds.value) && ev::toBool(rVerifyCmds.value));
+
+            brompris::api::setDbusAddress("");
+            std::cout << "  JS Service <-> Controller D-Bus round-trip [PASS]" << std::endl;
+        }
+    }
+#endif
+
+    // 9. Test shutdownMprisAsync()
     {
         brompris::api::shutdownMprisAsync();
         // After shutdown, events queued should not throw
@@ -408,9 +592,13 @@ int main() {
         std::cout << "  shutdownMprisAsync() [PASS]" << std::endl;
     }
 
-    // 8. GC stress simulation loop
+    // 10. GC stress simulation loop
     {
         brompris::api::setMediaManager(testMgr);
+        brompris::api::setPlayerServiceFactory(
+            [](const PlayerServiceConfig& cfg, PlayerServiceCallbacks cbs) {
+                return std::make_unique<PlayerService>(cfg, std::move(cbs));
+            });
         auto rStress = evalScript(
             "(function() {\n"
             "  for (let i = 0; i < 200; ++i) {\n"
@@ -420,12 +608,18 @@ int main() {
             "    const cb = (e) => {};\n"
             "    bro.mpris.on('playbackStatus', cb);\n"
             "    bro.mpris.off('playbackStatus', cb);\n"
+            "    const svc = bro.mpris.createService({ name: 'stress_' + i, identity: 'Stress' });\n"
+            "    svc.setPlaybackStatus('Playing');\n"
+            "    svc.setMetadata({ title: 'Track ' + i, artist: 'Artist' });\n"
+            "    svc.onCommand((c) => {});\n"
+            "    svc.close();\n"
             "  }\n"
             "  return true;\n"
             "})()\n"
         );
         REQUIRE(!rStress.thrown && ev::toBool(rStress.value));
         brompris::api::tickMprisAsync();
+        brompris::api::shutdownMprisAsync();
         std::cout << "  GC stress loop [PASS]" << std::endl;
     }
 

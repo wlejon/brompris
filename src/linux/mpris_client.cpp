@@ -116,11 +116,36 @@ bool MprisPlaybackController::set_position(
         "org.mpris.MediaPlayer2.Player", "SetPosition");
     if (!msg) return false;
 
-    std::string tid = track_id;
-    if (tid.empty()) {
+    std::string tid;
+    if (track_id.empty()) {
         tid = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
-    } else if (tid.front() != '/') {
-        tid = "/org/mpris/MediaPlayer2/TrackList/" + tid;
+    } else {
+        std::string raw = (track_id.front() == '/')
+                              ? track_id
+                              : ("/org/mpris/MediaPlayer2/TrackList/" + track_id);
+        tid.reserve(raw.size());
+        bool prev_slash = false;
+        for (char c : raw) {
+            if (c == '/') {
+                if (!prev_slash) {
+                    tid.push_back('/');
+                    prev_slash = true;
+                }
+            } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                       (c >= '0' && c <= '9') || c == '_') {
+                tid.push_back(c);
+                prev_slash = false;
+            } else {
+                tid.push_back('_');
+                prev_slash = false;
+            }
+        }
+        while (tid.size() > 1 && tid.back() == '/') {
+            tid.pop_back();
+        }
+        if (tid.empty() || tid == "/") {
+            tid = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
+        }
     }
 
     if (!msg.append_object_path(brodbus::ObjectPath(tid))) return false;

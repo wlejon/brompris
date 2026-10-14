@@ -32,6 +32,7 @@ include/brompris/
 ├── controller.h       # PlaybackController abstract transport interface
 ├── observer.h         # PlayerObserver & ManagerObserver interfaces
 ├── player_model.h     # Normalized player state & position ticker
+├── player_service.h   # PlayerService (MediaService) MPRIS2 publisher interface
 └── mpris.h            # MediaPlayer & MediaManager discovery coordinators
 
 src/
@@ -39,9 +40,12 @@ src/
 ├── player_model.cpp   # State mutations & playback position interpolator
 ├── media_player.cpp   # MediaPlayer instance & observer dispatch
 ├── media_manager.cpp  # Manager lifecycle & active player heuristics
+├── player_service.cpp # PlayerService base state & callback dispatch
 ├── linux/
-│   ├── mpris_client.h # Linux MPRIS client definitions
-│   └── mpris_client.cpp # org.mpris.MediaPlayer2.* discovery & signals via brodbus
+│   ├── mpris_client.h   # Linux MPRIS client definitions
+│   ├── mpris_client.cpp # org.mpris.MediaPlayer2.* discovery & signals via brodbus
+│   ├── mpris_service.h  # Linux MPRIS2 publisher definitions
+│   └── mpris_service.cpp # org.mpris.MediaPlayer2.<name> D-Bus service export
 ├── win/
 │   └── smtc.cpp       # Windows WinRT SMTC backend
 └── mac/
@@ -51,7 +55,7 @@ src/
 ### Key Components
 
 1. **`MediaMetadata`**:
-   Normalized container for track metadata (`title`, `artist`, `artists`, `album`, `album_artist`, `album_art_url`, `duration_usec`, `track_id`, `track_number`, `disc_number`, `genres`, `user_rating`, `url`). Includes bi-directional codecs for MPRIS2 `a{sv}` dictionaries.
+   Normalized container for track metadata (`title`, `artist`, `artists`, `album`, `album_artist`, `album_artists`, `album_art_url`, `duration_usec`, `track_id`, `track_number`, `disc_number`, `genres`, `user_rating`, `url`). Includes bi-directional codecs for MPRIS2 `a{sv}` dictionaries.
 
 2. **`PlayerModel` & Position Ticker**:
    Media IPC protocols (MPRIS2, SMTC) do not broadcast continuous 60Hz position ticks over IPC. Instead, `PlayerModel` calculates the exact playback position using a steady-clock linear interpolator:
@@ -71,6 +75,9 @@ src/
 
 4. **`MediaManager`**:
    Discovers all active players on the system. Automatically selects the current `active_player()` based on playback status heuristics (preferring playing players, then paused players, ordered by most recent activity).
+
+5. **`PlayerService` (`MediaService`)**:
+   Publishes a media player on the session bus (`org.mpris.MediaPlayer2.<name>` at `/org/mpris/MediaPlayer2`), exporting `org.mpris.MediaPlayer2` and `org.mpris.MediaPlayer2.Player` properties, emitting `PropertiesChanged` and `Seeked(x)` signals, and dispatching incoming transport commands (`Play`, `Pause`, `PlayPause`, `Stop`, `Next`, `Previous`, `Seek`, `SetPosition`, `OpenUri`, `Raise`, `Quit`, and writable property updates) to registered callbacks and observers. Also exposed to Bronze JavaScript via `bro.mpris.createService(options)` / `bro.mpris.publish(options)`.
 
 ---
 
@@ -108,6 +115,8 @@ Test coverage:
 - **`test_player_model`**: Tests state mutations, status transitions, and position ticker interpolation/freezing/scaling/clamping.
 - **`test_mpris_client`**: Integration test spinning up a private D-Bus daemon, exporting a real MPRIS2 player, connecting a `brompris` client, and verifying real signal subscriptions (`PropertiesChanged`, `Seeked`) and method calls (`Play`, `Pause`, `Seek`, etc.).
 - **`test_media_manager`**: Tests multi-player discovery, dynamic player arrival/exit via `NameOwnerChanged`, and `active_player()` heuristic switching.
+- **`test_player_service`**: Tests `PlayerService` (`MediaService`) state management, callback/observer dispatch, and full private D-Bus round-trip interoperability with `MediaManager` and `MediaPlayer`.
+- **`test_api`**: Tests the `bro.mpris` Bronze JavaScript API (`MediaManager` controller bindings, `bro.mpris.createService` / `bro.mpris.publish` publisher bindings, and end-to-end JS service <-> controller round-trip over a private D-Bus daemon).
 
 ---
 
