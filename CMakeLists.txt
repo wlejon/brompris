@@ -75,6 +75,8 @@ brompris_warnings(brompris)
 target_link_libraries(brompris PUBLIC Threads::Threads)
 if(BROMPRIS_LINUX)
     target_link_libraries(brompris PUBLIC brodbus::brodbus PRIVATE PkgConfig::SYSTEMD)
+elseif(WIN32)
+    target_link_libraries(brompris PRIVATE windowsapp)
 endif()
 
 # --- Standalone Bronze JavaScript API ---
