@@ -77,6 +77,13 @@ if(BROMPRIS_LINUX)
     target_link_libraries(brompris PUBLIC brodbus::brodbus PRIVATE PkgConfig::SYSTEMD)
 elseif(WIN32)
     target_link_libraries(brompris PRIVATE windowsapp)
+    # One C++/WinRT per binary: its base.h stamps its version on every object
+    # (/FAILIFMISMATCH), so a host that also links libremidi, which projects
+    # the SDK with the newest C++/WinRT into <build>/cppwinrt, fails to link
+    # against objects built on the SDK's own older headers. Those headers come
+    # first where they exist; a missing directory is ignored, and the SDK's
+    # are used.
+    target_include_directories(brompris BEFORE PRIVATE ${CMAKE_BINARY_DIR}/cppwinrt)
 endif()
 
 # --- Standalone Bronze JavaScript API ---
