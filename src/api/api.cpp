@@ -168,12 +168,25 @@ std::mutex g_events_mu;
 std::vector<MprisEventVariant> g_pending_events;
 ApiObserver g_observer;
 
+// The manager of a process that may not reach the desktop session's media
+// players (setSessionAccess(false)): it sees none.
+class DetachedMediaManager : public MediaManager {
+public:
+    std::vector<std::shared_ptr<MediaPlayer>> active_players() const override { return {}; }
+    std::shared_ptr<MediaPlayer> active_player() const override { return nullptr; }
+    std::shared_ptr<MediaPlayer> find_player(const std::string&) const override { return nullptr; }
+    int process() override { return 0; }
+    int wait(uint64_t) override { return 0; }
+    void update() override {}
+};
+
 std::mutex g_services_mu;
 std::shared_ptr<MediaManager> g_custom_manager;
 std::shared_ptr<MediaManager> g_default_manager;
 PlayerServiceFactory g_service_factory;
 std::string g_dbus_address;
 bool g_observer_attached = false;
+bool g_session_access = true;
 
 } // namespace
 
@@ -185,6 +198,9 @@ std::shared_ptr<MediaManager> activeManager() {
             g_observer_attached = true;
         }
         return g_custom_manager;
+    }
+    if (!g_default_manager && !g_session_access) {
+        g_default_manager = std::make_shared<DetachedMediaManager>();
     }
     if (!g_default_manager) {
 #if defined(BROMPRIS_HAS_BRODBUS)
@@ -246,17 +262,42 @@ std::string getDbusAddress() {
     return g_dbus_address;
 }
 
+void setSessionAccess(bool enabled) {
+    std::lock_guard lock(g_services_mu);
+    if (g_session_access == enabled) return;
+    g_session_access = enabled;
+    if (!g_custom_manager && g_default_manager) {
+        if (g_observer_attached) {
+            g_observer.detach_from_manager(g_default_manager.get());
+            g_observer_attached = false;
+        }
+        g_default_manager.reset();
+    }
+}
+
+bool sessionAccess() {
+    std::lock_guard lock(g_services_mu);
+    return g_session_access;
+}
+
 std::unique_ptr<PlayerService> createApiPlayerService(
     const PlayerServiceConfig& cfg, PlayerServiceCallbacks cbs) {
     PlayerServiceFactory factory;
     std::string address;
+    bool session = true;
     {
         std::lock_guard lock(g_services_mu);
         factory = g_service_factory;
         address = g_dbus_address;
+        session = g_session_access;
     }
     if (factory) {
         return factory(cfg, std::move(cbs));
+    }
+    // Without the session, a service keeps its state in this process and
+    // is published nowhere.
+    if (!session) {
+        return std::make_unique<PlayerService>(cfg, std::move(cbs));
     }
 #if defined(BROMPRIS_HAS_BRODBUS)
     if (!address.empty()) {

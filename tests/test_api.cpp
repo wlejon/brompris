@@ -623,6 +623,32 @@ int main() {
         std::cout << "  GC stress loop [PASS]" << std::endl;
     }
 
+    // 11. Without session access (a headless host) the API sees none of the
+    // machine's players, and a service it creates lives in this process only.
+    {
+        brompris::api::setMediaManager(nullptr);
+        brompris::api::setPlayerServiceFactory(nullptr);
+        brompris::api::setSessionAccess(false);
+        CHECK(!brompris::api::sessionAccess());
+        auto mgr = brompris::api::getMediaManager();
+        REQUIRE(mgr != nullptr);
+        CHECK(mgr->active_players().empty());
+        auto r = evalScript(
+            "(function() {\n"
+            "  if (bro.mpris.getPlayers().length !== 0) return 'players';\n"
+            "  if (bro.mpris.getActivePlayer() !== null) return 'active';\n"
+            "  const svc = bro.mpris.createService({ name: 'detached', identity: 'Detached' });\n"
+            "  svc.setPlaybackStatus('Playing');\n"
+            "  const status = svc.getPlaybackStatus();\n"
+            "  svc.close();\n"
+            "  return status === 'Playing' ? 'ok' : 'status ' + status;\n"
+            "})()\n");
+        REQUIRE(!r.thrown);
+        CHECK_EQ(ev::toUtf8(r.value), std::string("ok"));
+        brompris::api::setSessionAccess(true);
+        std::cout << "  setSessionAccess(false) sees no machine players [PASS]" << std::endl;
+    }
+
     std::cout << "All brompris JavaScript API tests PASSED!" << std::endl;
     return bstest::finish("test_api");
 }

@@ -36,6 +36,14 @@ void setDbusAddress(const std::string& address);
 /// Gets the configured D-Bus address (empty if using default session bus).
 std::string getDbusAddress();
 
+/// Whether the API reaches the desktop session's media players (on by
+/// default). Off, as a headless host sets it, `getPlayers` sees no player of
+/// the machine's and `createService` publishes nothing outside the process,
+/// so a test neither reads nor shows up in the user's media sessions. A
+/// manager set with setMediaManager is used either way.
+void setSessionAccess(bool enabled);
+bool sessionAccess();
+
 } // namespace brompris::api
 
 using brompris::api::installMpris;
@@ -46,3 +54,4 @@ using brompris::api::getMediaManager;
 using brompris::api::setPlayerServiceFactory;
 using brompris::api::setDbusAddress;
 using brompris::api::getDbusAddress;
+using brompris::api::setSessionAccess;
