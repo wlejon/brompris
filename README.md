@@ -5,9 +5,9 @@
 A modern, reusable C++20 cross-platform media player interfacing library for the [bro](https://github.com/wlejon/bro) ecosystem.
 
 `brompris` discovers running media players, monitors their playback status and metadata, tracks smooth playback position in real time, and exposes standardized transport controls:
-- **Linux**: Full MPRIS2 (`org.mpris.MediaPlayer2.*`) client backed by [brodbus](https://github.com/wlejon/brodbus).
-- **Windows**: not implemented yet. The library builds, and the manager reports no players; a backend on the System Media Transport Controls (WinRT SMTC) is planned.
-- **macOS**: not implemented yet. The library builds, and the manager reports no players; a backend on MediaRemote / Now Playing is planned.
+- **Linux**: Full MPRIS2 (`org.mpris.MediaPlayer2.*`) client and service publisher backed by [brodbus](https://github.com/wlejon/brodbus).
+- **Windows**: System Media Transport Controls (`GlobalSystemMediaTransportControlsSessionManager`) client and publisher in `src/win/smtc.cpp`.
+- **macOS**: Now Playing (`MPNowPlayingInfoCenter` / `MPRemoteCommandCenter`) publisher and Music/Spotify controller in `src/mac/now_playing.mm`.
 
 ---
 
