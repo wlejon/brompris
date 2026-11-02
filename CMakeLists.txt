@@ -86,6 +86,12 @@ elseif(WIN32)
     # first where they exist; a missing directory is ignored, and the SDK's
     # are used.
     target_include_directories(brompris BEFORE PRIVATE ${CMAKE_BINARY_DIR}/cppwinrt)
+elseif(APPLE)
+    target_compile_options(brompris PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_link_libraries(brompris PRIVATE
+        "-framework MediaPlayer"
+        "-framework Foundation"
+        "-framework AppKit")
 endif()
 
 # --- Standalone Bronze JavaScript API ---
