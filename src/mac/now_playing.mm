@@ -402,15 +402,16 @@ private:
     std::mutex cv_mutex_;
     std::condition_variable cv_;
 
-    id play_target_ = nil;
-    id pause_target_ = nil;
-    id toggle_target_ = nil;
-    id stop_target_ = nil;
-    id next_target_ = nil;
-    id prev_target_ = nil;
-    id pos_target_ = nil;
-    id repeat_target_ = nil;
-    id shuffle_target_ = nil;
+    // ::id: PlayerService::id() hides Objective-C's id inside the class.
+    ::id play_target_ = nil;
+    ::id pause_target_ = nil;
+    ::id toggle_target_ = nil;
+    ::id stop_target_ = nil;
+    ::id next_target_ = nil;
+    ::id prev_target_ = nil;
+    ::id pos_target_ = nil;
+    ::id repeat_target_ = nil;
+    ::id shuffle_target_ = nil;
 };
 
 // ============================================================================
